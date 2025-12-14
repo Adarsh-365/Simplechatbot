@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+faiss-cpu
+langchain
+langchain-google-genai
+pypdf
+python-docx
+beautifulsoup4
+markdown
+rank_bm25
+langchain_community
+lxml
+google-generativeai
+sentence-transformers
+torch

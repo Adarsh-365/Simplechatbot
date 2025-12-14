@@ -1,0 +1,1 @@
+[{"sender": "user", "text": "list the authors from paper"}, {"sender": "bot", "text": "The authors of the paper \"BitGNN: Unleashing the Performance Potential of Binary Graph Neural Networks on GPUs\" are:\n\n*   Jou-An Chen\n*   Hsin-Hsuan Sung\n*   Xipeng Shen\n*   Sutanay Choudhury\n*   Ang Li"}]

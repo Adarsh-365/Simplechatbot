@@ -1,2 +1,0 @@
-# Simplechatbot
-Simplechatbot

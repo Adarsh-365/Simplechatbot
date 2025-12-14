@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAGbot with Gemini</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <div id="wrapper">
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h2>Settings</h2>
+            </div>
+            <div id="settings-container">
+                <div id="upload-container">
+                    <h3><i class="fas fa-file-upload"></i> Upload Document</h3>
+                    <form id="upload-form">
+                        <input type="file" id="file" name="file" accept=".pdf,.docx,.txt,.md">
+                        <button type="submit">Upload</button>
+                    </form>
+                    <p id="upload-status"></p>
+                </div>
+                <div id="api-key-container">
+                    <h3><i class="fas fa-key"></i> API Key</h3>
+                    <input type="password" id="api-key" placeholder="Enter your Google API Key">
+                </div>
+                <div id="model-selection-container">
+                    <h3><i class="fas fa-robot"></i> Model Selection</h3>
+                    <select id="model-select">
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                        <option value="gemini-pro">Gemini Pro</option>
+                    </select>
+                </div>
+            </div>
+            <div class="sidebar-header">
+                <h2>Chat History</h2>
+            </div>
+            <div id="chat-history-container">
+                <!-- Chat history will be loaded here -->
+            </div>
+        </div>
+        <div id="chat-container">
+            <div id="message-list">
+                <!-- Messages will be appended here -->
+            </div>
+            <div id="chat-input">
+                <input type="text" id="query" placeholder="Type your message...">
+                <button id="send-btn"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadForm = document.getElementById('upload-form');
+            const uploadStatus = document.getElementById('upload-status');
+            const messageList = document.getElementById('message-list');
+            const queryInput = document.getElementById('query');
+            const sendBtn = document.getElementById('send-btn');
+            const apiKeyInput = document.getElementById('api-key');
+            const modelSelect = document.getElementById('model-select');
+            const chatHistoryContainer = document.getElementById('chat-history-container');
+            const newChatBtn = document.createElement('button');
+            
+            let currentSessionId = null;
+
+            newChatBtn.textContent = 'New Chat';
+            newChatBtn.style.marginBottom = '10px';
+            chatHistoryContainer.before(newChatBtn);
+
+            newChatBtn.addEventListener('click', () => {
+                currentSessionId = null;
+                messageList.innerHTML = '';
+                addMessage("Started a new chat. Upload a document or ask a general question.", "bot", false);
+            });
+
+            function addMessage(text, sender, addToHistory = true) {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message', sender);
+                const iconDiv = document.createElement('div');
+                iconDiv.classList.add('icon');
+                const icon = document.createElement('i');
+                icon.classList.add('fas', sender === 'user' ? 'fa-user' : 'fa-robot');
+                iconDiv.appendChild(icon);
+                const textDiv = document.createElement('div');
+                textDiv.classList.add('text');
+                textDiv.textContent = text;
+
+                if (sender === 'user') {
+                    messageDiv.appendChild(textDiv);
+                    messageDiv.appendChild(iconDiv);
+                } else {
+                    messageDiv.appendChild(iconDiv);
+                    messageDiv.appendChild(textDiv);
+                }
+                
+                messageList.appendChild(messageDiv);
+                messageList.scrollTop = messageList.scrollHeight;
+            }
+
+            async function loadModels() {
+                try {
+                    const response = await fetch('models.json'); 
+                    const models = await response.json();
+                    modelSelect.innerHTML = '';
+                    models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model;
+                        option.textContent = model.replace('models/', '');
+                        modelSelect.appendChild(option);
+                    });
+                } catch (error) {
+                    console.error('Error loading models:', error);
+                    modelSelect.innerHTML = '<option value="gemini-1.5-flash">Gemini 1.5 Flash (default)</option>';
+                }
+            }
+
+            uploadForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const fileInput = document.getElementById('file');
+                if (fileInput.files.length === 0) {
+                    uploadStatus.textContent = 'Please select a file.';
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                uploadStatus.textContent = 'Uploading and processing...';
+                try {
+                    const response = await fetch('/upload/', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (result.message) {
+                        uploadStatus.textContent = result.message;
+                        addMessage('Document uploaded successfully. You can now ask questions.', 'bot', false);
+                    } else if (result.error) {
+                        uploadStatus.textContent = `Error: ${result.error}`;
+                    }
+                } catch (error) {
+                    uploadStatus.textContent = 'An error occurred during upload.';
+                    console.error('Upload error:', error);
+                }
+            });
+
+            async function handleQuery() {
+                const query = queryInput.value.trim();
+                if (!query) return;
+
+                addMessage(query, 'user');
+                queryInput.value = '';
+                addMessage('...', 'bot');
+
+                const formData = new FormData();
+                formData.append('query', query);
+                formData.append('api_key', apiKeyInput.value);
+                formData.append('model', modelSelect.value);
+                if (currentSessionId) {
+                    formData.append('session_id', currentSessionId);
+                }
+
+                try {
+                    const response = await fetch('/query/', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    const lastBotMessage = messageList.querySelector('.message.bot:last-child .text');
+                    if (result.answer) {
+                        lastBotMessage.textContent = result.answer;
+                        if (result.session_id && !currentSessionId) {
+                            currentSessionId = result.session_id;
+                            loadSessions();
+                        }
+                    } else if (result.error) {
+                        lastBotMessage.textContent = `Error: ${result.error}`;
+                    }
+                } catch (error) {
+                    const lastBotMessage = messageList.querySelector('.message.bot:last-child .text');
+                    lastBotMessage.textContent = 'An error occurred.';
+                    console.error('Query error:', error);
+                }
+            }
+
+            sendBtn.addEventListener('click', handleQuery);
+            queryInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleQuery();
+            });
+
+            async function loadSessions() {
+                try {
+                    const response = await fetch('/sessions');
+                    const sessions = await response.json();
+                    chatHistoryContainer.innerHTML = '';
+                    sessions.forEach(sessionId => {
+                        const sessionDiv = document.createElement('div');
+                        sessionDiv.classList.add('history-item');
+                        sessionDiv.textContent = `Chat from ${new Date(parseInt(sessionId) * 1000).toLocaleString()}`;
+                        sessionDiv.dataset.sessionId = sessionId;
+                        sessionDiv.addEventListener('click', () => loadSession(sessionId));
+                        chatHistoryContainer.appendChild(sessionDiv);
+                    });
+                } catch (error) {
+                    console.error('Error loading sessions:', error);
+                }
+            }
+            
+            async function loadSession(sessionId) {
+                try {
+                    const response = await fetch(`/session/${sessionId}`);
+                    const history = await response.json();
+                    messageList.innerHTML = '';
+                    history.forEach(item => {
+                        addMessage(item.text, item.sender, false);
+                    });
+                    currentSessionId = sessionId;
+                } catch (error) {
+                    console.error('Error loading session:', error);
+                }
+            }
+            
+            loadModels();
+            loadSessions();
+        });
+    </script>
+</body>
+</html>
